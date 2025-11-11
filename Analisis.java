@@ -1,4 +1,3 @@
-
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,10 +38,10 @@ public class Analisis implements Analizable, Serializable {
         if (proyecto == null || proyecto.getDocumentos() == null) {
             return freq;
         }
-        
+
         for (Documento d : proyecto.getDocumentos()) {
             if (d == null || d.getContenido() == null) continue;
-            
+
             String[] tokens = d.getContenido().split("\\W+");
             for (String t : tokens) {
                 if (t == null || t.trim().isEmpty()) continue;
@@ -51,5 +50,38 @@ public class Analisis implements Analizable, Serializable {
             }
         }
         return freq;
+    }
+
+    // Genera un resumen final incluyendo hipótesis y conteos básicos
+    public void generarResumenFinal() {
+        System.out.println("----- Resumen final -----");
+        int totalPalabras = 0;
+        Map<String,Integer> freq = frecuenciaPalabras();
+        for (Integer v : freq.values()) totalPalabras += v;
+
+        int totalEtiquetas = proyecto.getEtiquetas() != null ? proyecto.getEtiquetas().size() : 0;
+        int totalCorrecciones = 0;
+        if (proyecto.getEtiquetas() != null) {
+            for (Etiqueta e : proyecto.getEtiquetas()) {
+                if (e == null || e.getFragmentos() == null) continue;
+                for (Fragmento f : e.getFragmentos()) {
+                    if (f != null && f.isCorregido()) totalCorrecciones++;
+                }
+            }
+        }
+
+        System.out.println("Palabras totales: " + totalPalabras);
+        System.out.println("Etiquetas: " + totalEtiquetas);
+        System.out.println("Correcciones marcadas: " + totalCorrecciones);
+
+        System.out.println("Hipótesis:");
+        if (proyecto.getHipotesis() == null || proyecto.getHipotesis().isEmpty()) {
+            System.out.println(" (ninguna)");
+        } else {
+            for (String h : proyecto.getHipotesis()) {
+                System.out.println(" - " + h);
+            }
+        }
+        System.out.println("-------------------------");
     }
 }

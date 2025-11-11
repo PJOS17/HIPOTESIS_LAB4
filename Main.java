@@ -1,5 +1,3 @@
-
-
 import javax.swing.*;
 
 public class Main {
@@ -11,7 +9,7 @@ public class Main {
             } catch (Exception ignored){}
             VistaPrincipal vp = new VistaPrincipal();
             ControladorPrincipal cp = new ControladorPrincipal(vp);
-            vp.setCtrl(cp);
+            vp.setControlador(cp);
             vp.setVisible(true);
         });
     }

@@ -1,7 +1,7 @@
-
-import javax.swing.*;
 import java.io.*;
+import java.util.Iterator;
 import java.util.List;
+import javax.swing.*;
 
 public class ControladorPrincipal {
     private Proyecto proyecto;
@@ -15,7 +15,7 @@ public class ControladorPrincipal {
     public Proyecto getProyecto(){ return proyecto; }
 
     public void setNombreProyecto(String nombre){
-        proyecto = new Proyecto(nombre);
+        proyecto.setNombre(nombre);
         vista.actualizarListaDocumentos();
         vista.actualizarCodebook();
     }
@@ -28,6 +28,7 @@ public class ControladorPrincipal {
             while((line=br.readLine())!=null){ sb.append(line).append("\n"); }
             br.close();
             Documento d = new Transcripcion(file.getName(), "Autor", sb.toString());
+            d.setSourcePath(file.getAbsolutePath()); // <-- guardar ruta origen
             proyecto.agregarDocumento(d);
             vista.actualizarListaDocumentos();
             JOptionPane.showMessageDialog(vista, "Documento cargado: " + file.getName());
@@ -38,12 +39,38 @@ public class ControladorPrincipal {
     }
 
     public void crearEtiqueta(String nombre, String descripcion, String color){
+        if(nombre==null || nombre.trim().isEmpty()){
+            JOptionPane.showMessageDialog(vista, "Nombre inválido");
+            return;
+        }
         if(proyecto.buscarEtiquetaPorNombre(nombre)!=null){
             JOptionPane.showMessageDialog(vista, "La etiqueta ya existe");
             return;
         }
         Etiqueta e = new Etiqueta(nombre, descripcion, color);
         proyecto.agregarEtiqueta(e);
+        vista.actualizarCodebook();
+    }
+
+    public void editarEtiqueta(String oldNombre, String nuevoNombre, String nuevaDesc, String nuevoColor){
+        if (oldNombre == null) return;
+        Etiqueta e = proyecto.buscarEtiquetaPorNombre(oldNombre);
+        if (e == null) {
+            JOptionPane.showMessageDialog(vista, "Etiqueta no encontrada");
+            return;
+        }
+        // Si cambió el nombre, verificar duplicado
+        if (!oldNombre.equalsIgnoreCase(nuevoNombre) && proyecto.buscarEtiquetaPorNombre(nuevoNombre) != null) {
+            JOptionPane.showMessageDialog(vista, "Ya existe otra etiqueta con ese nombre");
+            return;
+        }
+        e.setNombre(nuevoNombre);
+        e.setDescripcion(nuevaDesc);
+        e.setColor(nuevoColor);
+        // Propagar color a fragmentos asignados
+        for (Fragmento f : e.getFragmentos()) {
+            if (f != null) f.asignarEtiqueta(e);
+        }
         vista.actualizarCodebook();
     }
 
@@ -54,8 +81,20 @@ public class ControladorPrincipal {
             return;
         }
         Fragmento f = new Fragmento(textoFragmento, -1, -1);
+        // asigna etiqueta (esto setea color en el fragmento)
         e.agregarFragmento(f);
         vista.actualizarCodebook();
+    }
+
+    // Nueva funcionalidad: crear hipótesis
+    public void crearHipotesis(String texto){
+        if(texto == null || texto.trim().isEmpty()){
+            JOptionPane.showMessageDialog(vista, "Hipótesis vacía");
+            return;
+        }
+        proyecto.agregarHipotesis(texto.trim());
+        vista.actualizarCodebook();
+        JOptionPane.showMessageDialog(vista, "Hipótesis agregada");
     }
 
     public void guardarProyecto(File destino){
@@ -77,6 +116,20 @@ public class ControladorPrincipal {
         } catch (IOException | ClassNotFoundException ex){
             ex.printStackTrace();
             JOptionPane.showMessageDialog(vista, "Error al cargar proyecto: " + ex.getMessage());
+        }
+    }
+
+    // nuevo: eliminar documento por título
+    public void eliminarDocumento(String titulo) {
+        if (titulo == null || titulo.isEmpty()) return;
+        Iterator<Documento> it = proyecto.getDocumentos().iterator();
+        while (it.hasNext()) {
+            Documento d = it.next();
+            if (d != null && titulo.equals(d.getTitulo())) {
+                it.remove();
+                vista.actualizarListaDocumentos();
+                return;
+            }
         }
     }
 
