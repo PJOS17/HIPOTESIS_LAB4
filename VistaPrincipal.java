@@ -1,6 +1,5 @@
 import java.awt.*;
 import java.io.File;
-import java.io.FileWriter;
 import java.util.List;
 import java.util.Map;
 import javax.swing.*;
@@ -10,6 +9,7 @@ import javax.swing.text.*;
 public class VistaPrincipal extends JFrame {
     private ControladorPrincipal ctrl;
     private ControladorAnalisis ctrlAnalisis;
+    private Usuario usuarioActual;
     private JList<String> listaDocumentos;
     private DefaultListModel<String> modeloDocumentos;
     private DefaultListModel<String> modeloEtiquetas;
@@ -24,8 +24,22 @@ public class VistaPrincipal extends JFrame {
     private String documentoActualTitulo = "";
     private Map<String, String> estilosDocumentos = new java.util.HashMap<>();
 
+    // Nuevas variables para botones que necesitan control de permisos
+    private JButton btnCrearEtiqueta;
+    private JButton btnAplicarEtiqueta;
+    private JButton btnDescargarAnalisis;
+    private JButton btnGuardarProyecto;
+    private JButton btnNuevoDocumento;
+    private JButton btnEditarEtiqueta;
+    private JLabel lblUsuario;
+
     public VistaPrincipal() {
+        this(null);
+    }
+
+    public VistaPrincipal(Usuario usuario) {
         super("Anthro-Analyzer Pro");
+        this.usuarioActual = usuario;
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1200, 750);
         setLocationRelativeTo(null);
@@ -43,7 +57,6 @@ public class VistaPrincipal extends JFrame {
         actualizarCodebook();
         if (ctrl != null && ctrl.getProyecto() != null) {
             txtProyecto.setText(ctrl.getProyecto().getNombre());
-            // ya no mostramos la hipótesis en la UI principal
             List<String> hipotesis = ctrl.getProyecto().getHipotesis();
             hipotesisActual = (hipotesis != null && !hipotesis.isEmpty()) ? hipotesis.get(0) : "";
         }
@@ -61,31 +74,46 @@ public class VistaPrincipal extends JFrame {
         JPanel left = new JPanel(new BorderLayout());
         left.setPreferredSize(new Dimension(260, 600));
 
+        // Panel con información del usuario
+        JPanel usuarioPanel = new JPanel(new BorderLayout());
+        lblUsuario = new JLabel("Usuario: " + (usuarioActual != null ? usuarioActual.getNombre() + " (" + usuarioActual.getTipo() + ")" : "Invitado"));
+        lblUsuario.setFont(new Font("Arial", Font.BOLD, 11));
+        usuarioPanel.add(lblUsuario, BorderLayout.NORTH);
+        usuarioPanel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+
         txtProyecto = new JTextField("Proyecto nuevo", 12);
 
-        // BOTÓN CAMBIADO: Guardar nombre -> Limpiar (limpia documento abierto)
         JButton btnLimpiar = new JButton("Limpiar");
         btnLimpiar.addActionListener(e -> {
             if (documentoActualTitulo.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "Abra un documento para limpiar.");
                 return;
             }
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para editar documentos.");
+                return;
+            }
             int opt = JOptionPane.showConfirmDialog(this, "Limpiar el contenido del documento actual?", "Confirmar", JOptionPane.YES_NO_OPTION);
             if (opt == JOptionPane.YES_OPTION) {
                 areaTexto.setText("");
-                guardarDocumentoActual(); // guarda el cambio en el objeto Documento
-                // limpiar estilos guardados
+                guardarDocumentoActual();
                 estilosDocumentos.remove(documentoActualTitulo);
                 restaurarEstilosDocumento(documentoActualTitulo);
                 actualizarContadoresDocumento();
             }
         });
 
-        JButton btnNuevoDocumento = new JButton("Nuevo documento");
-        btnNuevoDocumento.addActionListener(e -> crearNuevoDocumentoDialog());
+        btnNuevoDocumento = new JButton("Nuevo documento");
+        btnNuevoDocumento.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para crear documentos.");
+                return;
+            }
+            crearNuevoDocumentoDialog();
+        });
 
         JPanel topLeft = new JPanel(new GridLayout(3, 1, 4, 4));
-        topLeft.add(new JLabel("Proyecto:"));
+        topLeft.add(usuarioPanel);
         topLeft.add(txtProyecto);
         JPanel btnProyectoPanel = new JPanel(new GridLayout(1, 2, 4, 4));
         btnProyectoPanel.add(btnLimpiar);
@@ -110,7 +138,13 @@ public class VistaPrincipal extends JFrame {
         btnAbrir.addActionListener(e -> abrirDocumentoSeleccionado());
 
         JButton btnEliminarDoc = new JButton("Eliminar documento");
-        btnEliminarDoc.addActionListener(e -> eliminarDocumento());
+        btnEliminarDoc.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para eliminar documentos.");
+                return;
+            }
+            eliminarDocumento();
+        });
 
         JPanel leftButtons = new JPanel(new GridLayout(3, 1, 4, 4));
         leftButtons.add(btnCargarTexto);
@@ -128,27 +162,56 @@ public class VistaPrincipal extends JFrame {
         JPanel acciones = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         acciones.setPreferredSize(new Dimension(1200, 80));
 
-        JButton btnCrearEtiqueta = new JButton("Crear etiqueta");
-        btnCrearEtiqueta.addActionListener(e -> crearEtiquetaDialog());
+        btnCrearEtiqueta = new JButton("Crear etiqueta");
+        btnCrearEtiqueta.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para crear etiquetas.");
+                return;
+            }
+            crearEtiquetaDialog();
+        });
 
-        JButton btnAplicarEtiqueta = new JButton("Aplicar etiqueta");
-        btnAplicarEtiqueta.addActionListener(e -> aplicarEtiquetaDialog());
+        btnAplicarEtiqueta = new JButton("Aplicar etiqueta");
+        btnAplicarEtiqueta.addActionListener(e -> {
+            if (!puedeEditarFragmentos()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para aplicar etiquetas.");
+                return;
+            }
+            aplicarEtiquetaDialog();
+        });
 
         JButton btnResumen = new JButton("Resumen etiquetas");
         btnResumen.addActionListener(e -> resumenEtiquetaDialog());
 
         JButton btnHipotesis = new JButton("Hipótesis");
-        btnHipotesis.addActionListener(e -> crearHipotesisDialog());
+        btnHipotesis.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para crear hipótesis.");
+                return;
+            }
+            crearHipotesisDialog();
+        });
 
         JButton btnAnalisis = new JButton("Análisis de Resultados");
         btnAnalisis.addActionListener(e -> mostrarAnalisisCompleto());
 
-        // BOTÓN: descargar análisis debajo del archivo editado
-        JButton btnDescargarAnalisis = new JButton("Descargar Análisis");
-        btnDescargarAnalisis.addActionListener(e -> descargarAnalisisDebajo());
+        btnDescargarAnalisis = new JButton("Descargar Análisis");
+        btnDescargarAnalisis.addActionListener(e -> {
+            if (!puedeDescargarAnalisis()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para descargar análisis.");
+                return;
+            }
+            descargarAnalisisDebajo();
+        });
 
-        JButton btnGuardarProyecto = new JButton("Guardar Proyecto");
-        btnGuardarProyecto.addActionListener(e -> guardarProyectoDialog());
+        btnGuardarProyecto = new JButton("Guardar Proyecto");
+        btnGuardarProyecto.addActionListener(e -> {
+            if (!puedeGuardarProyecto()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para guardar proyectos.");
+                return;
+            }
+            guardarProyectoDialog();
+        });
 
         acciones.add(btnCrearEtiqueta);
         acciones.add(btnAplicarEtiqueta);
@@ -161,20 +224,22 @@ public class VistaPrincipal extends JFrame {
         center.add(acciones, BorderLayout.NORTH);
         center.add(scrollCenter, BorderLayout.CENTER);
 
-        // PANEL DERECHO - reemplazado para mostrar etiquetas con color y habilitar botones
+        // PANEL DERECHO
         JPanel right = new JPanel(new BorderLayout());
+        right.setPreferredSize(new Dimension(260, 600));
+        
         modeloEtiquetas = new DefaultListModel<>();
         listEtiquetas = new JList<>(modeloEtiquetas);
         listEtiquetas.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         JScrollPane scrollEtiq = new JScrollPane(listEtiquetas);
 
-        // botones de etiqueta como variables locales visibles en este bloque
         JButton btnVerEtiqueta = new JButton("Ver etiqueta");
-        JButton btnEditarEtiqueta = new JButton("Editar etiqueta");
+        btnEditarEtiqueta = new JButton("Editar etiqueta");
+        JButton btnEliminarEtiqueta = new JButton("Eliminar etiqueta");
         btnVerEtiqueta.setEnabled(false);
         btnEditarEtiqueta.setEnabled(false);
+        btnEliminarEtiqueta.setEnabled(false);
 
-        // Renderer que muestra un cuadrado de color junto al nombre
         listEtiquetas.setCellRenderer(new DefaultListCellRenderer() {
             private final Icon emptyIcon = new ColorIcon(null);
             @Override
@@ -193,16 +258,15 @@ public class VistaPrincipal extends JFrame {
             }
         });
 
-        // List selection listener para habilitar botones
         listEtiquetas.addListSelectionListener(ev -> {
             if (!ev.getValueIsAdjusting()) {
                 boolean sel = listEtiquetas.getSelectedIndex() >= 0;
                 btnVerEtiqueta.setEnabled(sel);
-                btnEditarEtiqueta.setEnabled(sel);
+                btnEditarEtiqueta.setEnabled(sel && puedeEditar());
+                btnEliminarEtiqueta.setEnabled(sel && puedeEditar());
             }
         });
 
-        // doble click para ver etiqueta
         listEtiquetas.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseClicked(java.awt.event.MouseEvent evt) {
                 if (evt.getClickCount() == 2) {
@@ -211,28 +275,47 @@ public class VistaPrincipal extends JFrame {
             }
         });
 
-        // acciones de botones
         btnVerEtiqueta.addActionListener(e -> mostrarAnalisisEtiquetaSeleccionada());
-        btnEditarEtiqueta.addActionListener(e -> editarEtiquetaDialog());
+        btnEditarEtiqueta.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para editar etiquetas.");
+                return;
+            }
+            editarEtiquetaDialog();
+        });
+        btnEliminarEtiqueta.addActionListener(e -> {
+            if (!puedeEditar()) {
+                JOptionPane.showMessageDialog(this, "No tiene permisos para eliminar etiquetas.");
+                return;
+            }
+            eliminarEtiquetaSeleccionada();
+        });
 
-        JPanel etiqButtons = new JPanel(new GridLayout(1, 2, 4, 4));
+        // Panel de botones de etiquetas
+        JPanel etiqButtons = new JPanel(new GridLayout(3, 1, 4, 4));
         etiqButtons.add(btnVerEtiqueta);
         etiqButtons.add(btnEditarEtiqueta);
+        etiqButtons.add(btnEliminarEtiqueta);
 
-        // meta panel (contadores)
+        // Panel de contadores
         lblPalabras = new JLabel("Palabras: 0");
         lblPalabras.setFont(new Font("Arial", Font.PLAIN, 12));
         lblEtiquetas = new JLabel("Etiquetas en doc: 0");
         lblEtiquetas.setFont(new Font("Arial", Font.PLAIN, 12));
 
-        JPanel metaPanel = new JPanel(new GridLayout(2,1));
+        JPanel metaPanel = new JPanel(new GridLayout(2, 1, 4, 4));
         metaPanel.add(lblPalabras);
         metaPanel.add(lblEtiquetas);
 
+        // Panel inferior que combina botones y contadores
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(etiqButtons, BorderLayout.CENTER);
+        bottomPanel.add(metaPanel, BorderLayout.SOUTH);
+
+        // Agregar componentes al panel derecho
         right.add(new JLabel("Codebook"), BorderLayout.NORTH);
         right.add(scrollEtiq, BorderLayout.CENTER);
-        right.add(etiqButtons, BorderLayout.SOUTH);
-        right.add(metaPanel, BorderLayout.PAGE_END);
+        right.add(bottomPanel, BorderLayout.SOUTH);
 
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(left, BorderLayout.WEST);
@@ -241,7 +324,6 @@ public class VistaPrincipal extends JFrame {
     }
 
     private void abrirDocumentoSeleccionado() {
-        // Guardar documento anterior antes de cambiar
         if (!documentoActualTitulo.isEmpty()) {
             guardarDocumentoActual();
         }
@@ -251,11 +333,7 @@ public class VistaPrincipal extends JFrame {
             Documento d = ctrl.getProyecto().getDocumentos().get(idx);
             documentoActualTitulo = d.getTitulo();
             areaTexto.setText(d.getContenido());
-            
-            // Restaurar estilos del documento
             restaurarEstilosDocumento(d.getTitulo());
-            
-            // Actualizar análisis según el documento
             actualizarAnalisisDocumento();
             actualizarContadoresDocumento();
         }
@@ -264,13 +342,11 @@ public class VistaPrincipal extends JFrame {
     private void guardarDocumentoActual() {
         if (documentoActualTitulo.isEmpty()) return;
         
-        // Guardar contenido
         Documento doc = ctrl.getProyecto().buscarDocumentoPorTitulo(documentoActualTitulo);
         if (doc != null) {
             doc.setContenido(areaTexto.getText());
         }
         
-        // Guardar estilos
         try {
             StyledDocument doc2 = areaTexto.getStyledDocument();
             StringBuilder html = new StringBuilder();
@@ -284,12 +360,10 @@ public class VistaPrincipal extends JFrame {
     }
 
     private void restaurarEstilosDocumento(String titulo) {
-        // Limpiar estilos previos
         StyledDocument doc = areaTexto.getStyledDocument();
         Style defaultStyle = areaTexto.getStyle(StyleContext.DEFAULT_STYLE);
         doc.setCharacterAttributes(0, doc.getLength(), defaultStyle, true);
         
-        // Reaplicar etiquetas del documento actual (solo si aparecen en el texto)
         if (ctrl != null && ctrl.getProyecto() != null) {
             String texto = areaTexto.getText();
             for (Etiqueta e : ctrl.getProyecto().getEtiquetas()) {
@@ -304,17 +378,14 @@ public class VistaPrincipal extends JFrame {
     }
 
     private void actualizarAnalisisDocumento() {
-        // reiniciar controlador de análisis (refresca con el proyecto actual)
         this.ctrlAnalisis = new ControladorAnalisis(ctrl.getProyecto());
     }
 
     private void actualizarContadoresDocumento() {
-        // palabras del documento abierto
         String contenido = areaTexto.getText();
         int palabras = contarPalabrasFragmento(contenido);
         lblPalabras.setText("Palabras: " + palabras);
 
-        // etiquetas aplicadas en este documento: contar fragmentos cuya texto aparece en el documento actual
         int contadorEtiq = 0;
         if (ctrl != null && ctrl.getProyecto() != null) {
             String texto = contenido == null ? "" : contenido;
@@ -323,7 +394,7 @@ public class VistaPrincipal extends JFrame {
                 for (Fragmento f : e.getFragmentos()) {
                     if (f != null && f.getTexto() != null && texto.contains(f.getTexto())) {
                         contadorEtiq++;
-                        break; // contar etiqueta una vez si aparece
+                        break;
                     }
                 }
             }
@@ -341,7 +412,6 @@ public class VistaPrincipal extends JFrame {
             documentoActualTitulo = "";
             estilosDocumentos.remove(titulo);
             
-            // Limpiar análisis del documento eliminado
             if (ctrlAnalisis != null) {
                 ctrlAnalisis = new ControladorAnalisis(ctrl.getProyecto());
             }
@@ -440,16 +510,92 @@ public class VistaPrincipal extends JFrame {
             if (e != null) {
                 Fragmento f = new Fragmento(selectedText, e);
                 e.agregarFragmento(f);
-
                 colorearTexto(selectedText, e.getColor());
-
-                // guardar y actualizar: contadores y análisis
                 guardarDocumentoActual();
                 actualizarContadoresDocumento();
                 actualizarAnalisisDocumento();
-
                 JOptionPane.showMessageDialog(this, "Etiqueta aplicada correctamente");
             }
+        }
+    }
+
+    private void editarEtiquetaDialog() {
+        int idx = listEtiquetas.getSelectedIndex();
+        if (idx < 0) { 
+            JOptionPane.showMessageDialog(this, "Seleccione una etiqueta"); 
+            return; 
+        }
+        String oldName = modeloEtiquetas.get(idx);
+        Etiqueta e = ctrl.getProyecto().buscarEtiquetaPorNombre(oldName);
+        if (e == null) return;
+
+        JTextField nombre = new JTextField(e.getNombre());
+        JTextField desc = new JTextField(e.getDescripcion() == null ? "" : e.getDescripcion());
+        JComboBox<String> colorOptions = new JComboBox<>(new String[]{"red", "blue", "green", "yellow", "orange", "purple", "magenta", "cyan", "gray", "Custom (#HEX)"});
+        JTextField customColor = new JTextField(e.getColor() == null ? "#FF6600" : e.getColor());
+        
+        String col = e.getColor();
+        if (col != null) {
+            boolean matched = false;
+            for (int i = 0; i < colorOptions.getItemCount(); i++) {
+                if (colorOptions.getItemAt(i).equalsIgnoreCase(col)) { 
+                    colorOptions.setSelectedIndex(i); 
+                    matched = true; 
+                    break; 
+                }
+            }
+            if (!matched && col.startsWith("#")) colorOptions.setSelectedItem("Custom (#HEX)");
+        }
+
+        Object[] message = {"Nombre:", nombre, "Descripción:", desc, "Color:", colorOptions, "Color custom (si aplica):", customColor};
+        int option = JOptionPane.showConfirmDialog(this, message, "Editar etiqueta", JOptionPane.OK_CANCEL_OPTION);
+        if (option == JOptionPane.OK_OPTION && !nombre.getText().trim().isEmpty()) {
+            String chosen = (String) colorOptions.getSelectedItem();
+            String finalColor = chosen;
+            if ("Custom (#HEX)".equals(chosen)) finalColor = customColor.getText().trim();
+            ctrl.editarEtiqueta(oldName, nombre.getText().trim(), desc.getText().trim(), finalColor);
+            actualizarCodebook();
+            
+            // Refrescar documento actual para mostrar nuevos colores
+            if (!documentoActualTitulo.isEmpty()) {
+                restaurarEstilosDocumento(documentoActualTitulo);
+            }
+        }
+    }
+
+    private void eliminarEtiquetaSeleccionada() {
+        int idx = listEtiquetas.getSelectedIndex();
+        if (idx < 0) { 
+            JOptionPane.showMessageDialog(this, "Seleccione una etiqueta"); 
+            return; 
+        }
+        
+        String nombre = modeloEtiquetas.get(idx);
+        Etiqueta e = ctrl.getProyecto().buscarEtiquetaPorNombre(nombre);
+        if (e == null) {
+            JOptionPane.showMessageDialog(this, "Etiqueta no encontrada");
+            return;
+        }
+        
+        int confirm = JOptionPane.showConfirmDialog(
+            this, 
+            "¿Está seguro de eliminar la etiqueta '" + nombre + "'?\n" +
+            "Se eliminarán " + e.contarFragmentos() + " fragmento(s) asociado(s).", 
+            "Confirmar eliminación", 
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE
+        );
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            ctrl.getProyecto().getEtiquetas().remove(e);
+            actualizarCodebook();
+            
+            // Refrescar el documento actual para quitar colores de la etiqueta eliminada
+            if (!documentoActualTitulo.isEmpty()) {
+                restaurarEstilosDocumento(documentoActualTitulo);
+            }
+            
+            JOptionPane.showMessageDialog(this, "Etiqueta '" + nombre + "' eliminada correctamente");
         }
     }
 
@@ -534,12 +680,15 @@ public class VistaPrincipal extends JFrame {
         if (opt == JOptionPane.OK_OPTION) {
             hipotesisActual = area.getText().trim();
             ctrl.crearHipotesis(hipotesisActual);
-            lblHipotesis.setText("Hipótesis: " + hipotesisActual);
         }
     }
 
     private void mostrarAnalisisCompleto() {
-        // asegurar análisis actualizado antes de mostrar
+        if (!puedeVerAnalisisCompleto()) {
+            JOptionPane.showMessageDialog(this, "No tiene permisos para ver el análisis completo.");
+            return;
+        }
+        
         actualizarAnalisisDocumento();
 
         int palabras = ctrlAnalisis.contarPalabrasTotales();
@@ -547,8 +696,6 @@ public class VistaPrincipal extends JFrame {
         int fragmentos = ctrl.getProyecto().getEtiquetas().stream().mapToInt(Etiqueta::contarFragmentos).sum();
 
         Map<String, Integer> palabrasPorEtiqueta = ctrlAnalisis.contarPalabrasEtiqueta();
-
-        // tomar hipótesis del proyecto (no de una etiqueta visible)
         List<String> hipotesis = ctrl.getProyecto().getHipotesis();
 
         StringBuilder sb = new StringBuilder();
@@ -584,7 +731,10 @@ public class VistaPrincipal extends JFrame {
 
     private void mostrarAnalisisEtiquetaSeleccionada() {
         int idx = listEtiquetas.getSelectedIndex();
-        if (idx < 0) { JOptionPane.showMessageDialog(this, "Seleccione una etiqueta"); return; }
+        if (idx < 0) { 
+            JOptionPane.showMessageDialog(this, "Seleccione una etiqueta"); 
+            return; 
+        }
         String nombre = modeloEtiquetas.get(idx);
         Etiqueta e = ctrl.getProyecto().buscarEtiquetaPorNombre(nombre);
         if (e == null) return;
@@ -619,43 +769,13 @@ public class VistaPrincipal extends JFrame {
         return count;
     }
 
-    private void editarEtiquetaDialog() {
-        int idx = listEtiquetas.getSelectedIndex();
-        if (idx < 0) { JOptionPane.showMessageDialog(this, "Seleccione una etiqueta"); return; }
-        String oldName = modeloEtiquetas.get(idx);
-        Etiqueta e = ctrl.getProyecto().buscarEtiquetaPorNombre(oldName);
-        if (e == null) return;
-
-        JTextField nombre = new JTextField(e.getNombre());
-        JTextField desc = new JTextField(e.getDescripcion() == null ? "" : e.getDescripcion());
-        JComboBox<String> colorOptions = new JComboBox<>(new String[]{"red", "blue", "green", "yellow", "orange", "purple", "magenta", "cyan", "gray", "Custom (#HEX)"});
-        JTextField customColor = new JTextField(e.getColor() == null ? "#FF6600" : e.getColor());
-        
-        String col = e.getColor();
-        if (col != null) {
-            boolean matched = false;
-            for (int i = 0; i < colorOptions.getItemCount(); i++) {
-                if (colorOptions.getItemAt(i).equalsIgnoreCase(col)) { colorOptions.setSelectedIndex(i); matched = true; break; }
-            }
-            if (!matched && col.startsWith("#")) colorOptions.setSelectedItem("Custom (#HEX)");
-        }
-
-        Object[] message = {"Nombre:", nombre, "Descripción:", desc, "Color:", colorOptions, "Color custom (si aplica):", customColor};
-        int option = JOptionPane.showConfirmDialog(this, message, "Editar etiqueta", JOptionPane.OK_CANCEL_OPTION);
-        if (option == JOptionPane.OK_OPTION && !nombre.getText().trim().isEmpty()) {
-            String chosen = (String) colorOptions.getSelectedItem();
-            String finalColor = chosen;
-            if ("Custom (#HEX)".equals(chosen)) finalColor = customColor.getText().trim();
-            ctrl.editarEtiqueta(oldName, nombre.getText().trim(), desc.getText().trim(), finalColor);
-            actualizarCodebook();
-        }
-    }
-
     private void resumenEtiquetaDialog() {
         StringBuilder sb = new StringBuilder("<html><body style='font-family:Arial; font-size:16px;'>");
         for (Etiqueta e : ctrl.getProyecto().getEtiquetas()) {
             sb.append("<h3>").append(e.getNombre()).append("</h3>");
-            for (Fragmento f : e.getFragmentos()) sb.append("<p>• ").append(f.getTexto()).append("</p>");
+            for (Fragmento f : e.getFragmentos()) {
+                sb.append("<p>• ").append(f.getTexto()).append("</p>");
+            }
         }
         sb.append("</body></html>");
         JEditorPane ed = new JEditorPane("text/html", sb.toString());
@@ -665,47 +785,7 @@ public class VistaPrincipal extends JFrame {
         JOptionPane.showMessageDialog(this, scroll, "Resumen de Etiquetas", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    private void descargarDocumento() {
-        if (documentoActualTitulo.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Por favor, seleccione un documento primero.");
-            return;
-        }
-
-        Documento doc = ctrl.getProyecto().buscarDocumentoPorTitulo(documentoActualTitulo);
-        if (doc == null) { JOptionPane.showMessageDialog(this, "Documento no encontrado."); return; }
-
-        JFileChooser fc = new JFileChooser();
-        fc.setFileFilter(new FileNameExtensionFilter("Text Files", "txt"));
-        if (doc.getSourcePath() != null) {
-            File src = new File(doc.getSourcePath());
-            fc.setCurrentDirectory(src.getParentFile());
-            fc.setSelectedFile(new File(src.getParentFile(), doc.getTitulo() + ".txt"));
-        } else {
-            fc.setSelectedFile(new File(doc.getTitulo() + ".txt"));
-        }
-
-        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File f = fc.getSelectedFile();
-            String path = f.getAbsolutePath();
-            if (!path.toLowerCase().endsWith(".txt")) path += ".txt";
-            try (FileWriter fw = new FileWriter(path)) {
-                // escribir contenido del documento y, sólo aquí, las hipótesis al principio
-                List<String> hipotesis = ctrl.getProyecto().getHipotesis();
-                if (hipotesis != null && !hipotesis.isEmpty()) {
-                    fw.write("Hipótesis:\n");
-                    for (String h : hipotesis) fw.write("- " + h + "\n");
-                    fw.write("\n---\n\n");
-                }
-                fw.write(areaTexto.getText());
-                JOptionPane.showMessageDialog(this, "Documento descargado correctamente en:\n" + path);
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(this, "Error al descargar documento: " + e.getMessage());
-            }
-        }
-    }
-
     private void guardarProyectoDialog() {
-        // Guardar documento actual antes de guardar proyecto
         if (!documentoActualTitulo.isEmpty()) {
             guardarDocumentoActual();
         }
@@ -725,7 +805,6 @@ public class VistaPrincipal extends JFrame {
         }
     }
 
-    // agrega/actualiza la lista de documentos en la UI
     public void actualizarListaDocumentos() {
         if (modeloDocumentos == null) return;
         modeloDocumentos.clear();
@@ -737,7 +816,6 @@ public class VistaPrincipal extends JFrame {
         }
     }
 
-    // agrega/actualiza el codebook (lista de etiquetas) en la UI
     public void actualizarCodebook() {
         if (modeloEtiquetas == null) return;
         modeloEtiquetas.clear();
@@ -747,16 +825,18 @@ public class VistaPrincipal extends JFrame {
         for (Etiqueta e : etqs) {
             if (e != null) modeloEtiquetas.addElement(e.getNombre());
         }
-        // al cambiar codebook actualizamos contadores y también el análisis
         actualizarContadoresDocumento();
         actualizarAnalisisDocumento();
     }
 
-    // Icon cuadrado de color para el renderer
     private static class ColorIcon implements Icon {
         private final Color color;
         private final int size = 12;
-        public ColorIcon(Color c) { this.color = c; }
+        
+        public ColorIcon(Color c) { 
+            this.color = c; 
+        }
+        
         @Override
         public void paintIcon(Component c, Graphics g, int x, int y) {
             if (color != null) {
@@ -766,7 +846,46 @@ public class VistaPrincipal extends JFrame {
                 g.drawRect(x, y, size, size);
             }
         }
-        @Override public int getIconWidth() { return size; }
-        @Override public int getIconHeight() { return size; }
+        
+        @Override 
+        public int getIconWidth() { 
+            return size; 
+        }
+        
+        @Override 
+        public int getIconHeight() { 
+            return size; 
+        }
+    }
+
+    // Métodos de control de permisos
+    private boolean puedeEditar() {
+        if (usuarioActual == null) return true;
+        String tipo = usuarioActual.getTipo().toLowerCase();
+        return tipo.equals("administrador") || tipo.equals("investigador");
+    }
+
+    private boolean puedeEditarFragmentos() {
+        if (usuarioActual == null) return true;
+        String tipo = usuarioActual.getTipo().toLowerCase();
+        return !tipo.equals("lector");
+    }
+
+    private boolean puedeDescargarAnalisis() {
+        if (usuarioActual == null) return true;
+        String tipo = usuarioActual.getTipo().toLowerCase();
+        return tipo.equals("administrador") || tipo.equals("investigador");
+    }
+
+    private boolean puedeGuardarProyecto() {
+        if (usuarioActual == null) return true;
+        String tipo = usuarioActual.getTipo().toLowerCase();
+        return tipo.equals("administrador") || tipo.equals("investigador");
+    }
+
+    private boolean puedeVerAnalisisCompleto() {
+        if (usuarioActual == null) return true;
+        String tipo = usuarioActual.getTipo().toLowerCase();
+        return tipo.equals("administrador") || tipo.equals("investigador");
     }
 }
